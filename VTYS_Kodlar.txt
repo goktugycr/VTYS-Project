@@ -1,0 +1,304 @@
+CREATE TABLE dilbilimi (
+    kitapno SERIAL,
+    diltur CHARACTER VARYING(20),
+    sayfa INTEGER,
+    CONSTRAINT "kitapPK" PRIMARY KEY("kitapno")
+);
+
+ALTER TABLE dilbilimi
+   ADD CONSTRAINT "kitapFK" FOREIGN KEY ("kitapno")
+   REFERENCES kitaplar ("kitapno")
+   ON DELETE CASCADE
+   ON UPDATE CASCADE;
+
+CREATE TABLE felsefe (
+    kitapno SERIAL,
+    sayfa SMALLINT,
+    yil SMALLINT,
+    CONSTRAINT "kitapPK" PRIMARY KEY("kitapno")
+);
+
+ALTER TABLE felsefe
+    ADD CONSTRAINT "kitapFK" FOREIGN KEY ("kitapno")
+    REFERENCES kitaplar ("kitapno")
+    ON DELETE CASCADE
+    ON UPDATE CASCADE;
+
+CREATE TABLE sosyoloji (
+    kitapno SERIAL,
+    sayfa SMALLINT,
+    CONSTRAINT "kitapPK" PRIMARY KEY("kitapno")
+);
+
+ALTER TABLE sosyoloji
+    ADD CONSTRAINT "kitapFK" FOREIGN KEY ("kitapno")
+    REFERENCES kitaplar ("kitapno")
+    ON DELETE CASCADE
+    ON UPDATE CASCADE;
+
+CREATE TABLE bilimsel (
+    kitapno SERIAL,
+    sayfa SMALLINT,
+    bilimdali CHARACTER(10),
+    CONSTRAINT "kitapPK" PRIMARY KEY("kitapno")
+);
+
+ALTER TABLE bilimsel
+    ADD CONSTRAINT "kitapFK" FOREIGN KEY ("kitapno")
+    REFERENCES kitaplar ("kitapno")
+    ON DELETE CASCADE
+    ON UPDATE CASCADE;
+
+CREATE TABLE edebiyat (
+    kitapno SERIAL,
+    edebitur CHARACTER(20),
+    sayfa SMALLINT,
+    CONSTRAINT "kitapPK" PRIMARY KEY("kitapno")
+);
+
+ALTER TABLE edebiyat
+    ADD CONSTRAINT "kitapFK" FOREIGN KEY ("kitapno")
+    REFERENCES kitaplar ("kitapno")
+    ON DELETE CASCADE
+    ON UPDATE CASCADE;
+
+CREATE TABLE sandalye (
+    sandelyeid SERIAL,
+    sandalyead CHARACTER VARYING(20),
+    masaid INTEGER,
+    kullanici CHARACTER(20)
+);
+
+CREATE TABLE aktiffkullanici (
+    aktifkullaniciid SERIAL
+);
+
+CREATE TABLE kullanici (
+    kullaniciid SERIAL,
+    kullaniciadi CHARACTER VARYING(20),
+    sifre CHARACTER VARYING(20),
+    kutuphaneid SMALLINT
+);
+
+CREATE TABLE kitaplar (
+    kitapno SERIAL,
+    yazaradi CHARACTER(20),
+    yayinevi CHARACTER(20),
+    kitapadi CHARACTER(40),
+    rafid SMALLINT,
+    kullanici CHARACTER VARYING(20),
+    kutuphaneid SMALLINT
+);
+
+CREATE TABLE masa (
+    masaid SERIAL,
+    sandalyesayi SMALLINT,
+    masaadi CHARACTER(10),
+    kutuphaneid SMALLINT
+);
+
+CREATE TABLE raflar (
+    rafid SERIAL,
+    rafturadi CHARACTER(20),
+    kitapsayisi SMALLINT,
+    kutupid SMALLINT
+);
+
+CREATE TABLE kutuphane (
+    kutuphaneid SERIAL,
+    libadi CHARACTER(20),
+    adres SMALLINT,
+    bostaki_kitap_sayisi SMALLINT
+);
+
+CREATE TABLE kutuphaneadres (
+    kutupadrid SERIAL,
+    ilceid INTEGER
+);
+
+CREATE TABLE ilce (
+    ilceid SERIAL,
+    ilcead CHARACTER(20),
+    mahalleid INTEGER
+);
+
+CREATE TABLE mahalle (
+    mahalleid SERIAL,
+    mahallead CHARACTER(20),
+    sokakid INTEGER
+);
+
+CREATE TABLE sokak (
+    sokakid SERIAL,
+    sokakad CHARACTER(20)
+);
+
+
+
+CREATE OR REPLACE FUNCTION toplam_kitap_sayi(kutupid INTEGER)
+RETURNS INTEGER AS
+$$
+DECLARE
+    kitap_sayisi INTEGER;
+BEGIN
+    SELECT count(kitapno) INTO kitap_sayisi FROM kitaplar WHERE kitaplar.kutuphaneid = kutupid;
+    RETURN kitap_sayisi;
+END;
+$$
+LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION sandalye_sayi(kutupid integer)
+RETURNS INTEGER AS
+$$
+DECLARE
+    masa_sayi INTEGER;
+BEGIN
+    SELECT count(*) INTO masa_sayi FROM sandalye inner join masa 
+         on sandalye.masaid = masa.masaid where masa.kutuphaneid = kutupid;
+    RETURN masa_sayi;
+END
+$$
+LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION bostaki_kitap_arttir()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.kullanici = 'admin' AND OLD.kullanici != 'admin' THEN
+        UPDATE kutuphane
+        SET bostaki_kitap_sayi = bostaki_kitap_sayi + 1 
+        FROM kitaplar
+        WHERE kitaplar.kutuphaneid = kutuphane.kutuphaneid;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER bostaki_arttir_trigger
+AFTER UPDATE ON kitaplar
+FOR EACH ROW
+EXECUTE FUNCTION bostaki_kitap_arttir();
+
+CREATE OR REPLACE FUNCTION bostaki_kitap_sayi_azalt()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.kullanici <> 'admin' AND OLD.kullanici = 'admin' THEN
+        UPDATE kutuphane
+        SET bostaki_kitap_sayi = bostaki_kitap_sayi - 1 
+        FROM kitaplar
+        WHERE kutuphane.kutuphaneid = NEW.kutuphaneid;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER bostaki_kitap_sayi_trigger
+AFTER UPDATE ON kitaplar
+FOR EACH ROW
+EXECUTE FUNCTION bostaki_kitap_sayi_azalt();
+
+CREATE OR REPLACE FUNCTION bostaki_sandalye_azalt()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.kullanici <> 'admin' AND OLD.kullanici = 'admin' THEN
+        UPDATE kutuphane
+        SET bostaki_masa_sayi = bostaki_masa_sayi - 1 
+        FROM sandalye
+        WHERE sandalye.kutuphaneid = new.kutuphaneid;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER bostaki_azalt_sandalye_trigger
+AFTER UPDATE ON sandalye
+FOR EACH ROW
+EXECUTE FUNCTION bostaki_sandalye_azalt();
+
+CREATE OR REPLACE FUNCTION bostaki_sandalye_arttir()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.kullanici = 'admin' AND OLD.kullanici != 'admin' THEN
+        UPDATE kutuphane
+        SET bostaki_masa_sayi = bostaki_masa_sayi + 1 
+        FROM sandalye
+        WHERE sandalye.kutuphaneid = kutuphane.kutuphaneid;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER bostaki_arttir_sandalye_trigger
+AFTER UPDATE ON sandalye
+FOR EACH ROW
+EXECUTE FUNCTION bostaki_sandalye_arttir();
+
+
+CREATE OR REPLACE FUNCTION toplam_kullanici_sayi(kutupid INTEGER)
+RETURNS INTEGER AS
+$$
+DECLARE
+    kullanici_sayisi INTEGER;
+BEGIN
+    SELECT count(*) into kullanici_sayisi from kullanici;
+	RETURN kullanici_sayisi;
+END;
+$$
+LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION adres_getir_(kutupid INTEGER)
+RETURNS TABLE (kutuphaneid INTEGER, libadi TEXT, ilcead TEXT, mahallead TEXT, sokakad TEXT) AS
+$$
+BEGIN
+    RETURN QUERY
+    SELECT kutuphane.kutuphaneid, kutuphane.libadi, ilce.ilcead, mahalle.mahallead, sokak.sokakad 
+    FROM kutuphane 
+    LEFT JOIN kutuphaneadres ON kutuphane.adres = kutuphaneadres.kutupadrid 
+    LEFT JOIN ilce ON kutuphaneadres.ilceid = ilce.ilceid 
+    LEFT JOIN mahalle ON ilce.mahalleid = mahalle.mahalleid 
+    LEFT JOIN sokak ON mahalle.mahalleid = sokak.mahalleid 
+    WHERE kutuphane.kutuphaneid = kutupid;
+END;
+$$
+LANGUAGE plpgsql;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
